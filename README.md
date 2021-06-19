@@ -1,6 +1,8 @@
 # Apple Cloud Notes Parser
 By: Jon Baumann, [Ciofeca Forensics](https://www.ciofecaforensics.com)
 
+Added Markdown export support by: [Jens A. Ewald](https://lea.io)
+
 ## About
 
 This program is a parser for the current version of Apple Notes data syncable with iCloud as seen on Apple handsets in iOS 9 and later. 
