@@ -663,8 +663,8 @@ class AppleNote < AppleCloudKitRecord
       created_at: #{@creation_time}
       last_modified: #{@modify_time}
       password: #{@crypto_password}
-      created_by: #{@notestore.cloud_kit_participants[@cloudkit_creator_record_id].email}
-      last_modified_by: #{@notestore.cloud_kit_participants[@cloudkit_modifier_record_id].email}
+      created_by: #{@notestore.cloud_kit_participants[@cloudkit_creator_record_id].email if @notestore.cloud_kit_participants[@cloudkit_creator_record_id]}
+      last_modified_by: #{@notestore.cloud_kit_participants[@cloudkit_modifier_record_id].email if @notestore.cloud_kit_participants[@cloudkit_modifier_record_id]}
       last_modified_on: #{@cloudkit_last_modified_device}
     META
     
