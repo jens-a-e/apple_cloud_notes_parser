@@ -326,4 +326,36 @@ class AppleNotesEmbeddedTable < AppleNotesEmbeddedObject
     return html
   end
 
+  def to_markdown
+    # Return our to_string function if we aren't reconstructed yet
+    return self.to_s if !@reconstructed_table
+
+    # Create an HTML table
+    table = "\n";
+    balance = Array.new(@reconstructed_table[0].count, 0)
+
+    
+    @reconstructed_table.each do |row|
+      row.each_with_index do |cell, i|
+        balance[i] = [cell.length, balance[i]].max
+      end
+    end
+    
+    table += "| " + balance.map{|c| "-" * c }.join(" | ") + " |\n"
+
+    @reconstructed_table.each do |r|
+      row = "| ";
+      row += r.map.with_index{ |cell, i|
+        cell.ljust(balance[i], " ")
+      }.join " | "
+      row += " |\n";
+      # Only add non-empty rows
+      table += row unless row.gsub(/\||\s/, '') == ""
+    end
+
+    # Close the table
+    table += "\n";
+    return table
+  end
+
 end

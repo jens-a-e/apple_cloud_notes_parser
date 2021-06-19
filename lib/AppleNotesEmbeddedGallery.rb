@@ -134,4 +134,14 @@ class AppleNotesEmbeddedGallery < AppleNotesEmbeddedObject
     return to_return
   end
 
+  def to_markdown
+    to_return = ""
+
+    @child_objects.each do |child_object|
+      to_return += child_object.to_markdown
+    end
+
+    return to_return
+  end
+
 end

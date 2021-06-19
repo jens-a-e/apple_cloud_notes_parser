@@ -88,4 +88,8 @@ class AppleNotesEmbeddedPublicURL < AppleNotesEmbeddedObject
     return "<a href='#{@url}'>#{@url}</a>"
   end
 
+def to_markdown
+  "[#{@url}](#{@url})\n"
+end
+
 end

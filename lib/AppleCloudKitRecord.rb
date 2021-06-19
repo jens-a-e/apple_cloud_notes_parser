@@ -33,7 +33,11 @@ class AppleCloudKitRecord
         # Pull out the relevant values
         participant_email = participant["UserIdentity"]["LookupInfo"]["EmailAddress"]
         participant_phone = participant["UserIdentity"]["LookupInfo"]["PhoneNumber"]
-        participant_record = participant["UserIdentity"]["UserRecordID"]["RecordName"]
+
+        # next unless participant["UserIdentity"]["UserRecordID"]
+
+        participant_record = participant["UserIdentity"]["UserRecordID"]["RecordName"] if participant["UserIdentity"]["UserRecordID"]
+
         participant_name_components = participant["UserIdentity"]["NameComponents"]["NS.nameComponentsPrivate"]
 
         # Initialize a new AppleCloudKitShareParticipant

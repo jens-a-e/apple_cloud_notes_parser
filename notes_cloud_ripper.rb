@@ -178,6 +178,34 @@ if apple_backup and apple_backup.valid? and apple_backup.note_stores.first.valid
       file.write(note_store.generate_html)
     end
 
+
+    # Write each notes as Markdown
+    logger.debug("Writing MArkdown for Note Store")
+    notes_directory = output_directory + "notes"
+    note_store.notes.each do |note_id, note|
+      dir = notes_directory + note.folder.name
+      dir.mkpath() unless dir.exist?
+      if note.embedded_objects.count > 0
+        # dir = notes_directory + note.folder.name + 
+        note.embedded_objects.each do |o|
+          next if o.get_media_filepath.to_s == ""
+          from = output_directory + "files" + Pathname.new(o.get_media_filepath)
+          if !File.exist?(from)
+            pp("Attached file not found: #{from}")
+            next
+          end
+          to = dir + Pathname.new(o.get_media_filepath)
+          to.dirname.mkpath()
+          require 'fileutils'
+          FileUtils.mv(from, to)
+        end
+      end
+      File.open(dir + "#{note.zettel_filename}.md", "wb") do |file|
+        file.write(note.generate_markdown)
+      end
+    end
+    
+
     # Create a CSV of the AppleNotesAccount objects
     logger.debug("Writing CSV for accounts")
     CSV.open(csv_directory + "note_store_accounts_#{backup_number}.csv", "wb", force_quotes: true) do |csv|

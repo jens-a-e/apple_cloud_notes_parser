@@ -1,3 +1,4 @@
+require 'fileutils'
 require 'keyed_archive'
 require 'sqlite3'
 require 'zlib'
@@ -15,6 +16,7 @@ require_relative 'AppleNotesEmbeddedPublicURL.rb'
 require_relative 'AppleNotesEmbeddedPublicVCard.rb'
 require_relative 'AppleNotesEmbeddedTable.rb'
 require_relative 'AppleNoteStore.rb'
+
 
 ##
 #
@@ -55,7 +57,8 @@ class AppleNote < AppleCloudKitRecord
                 :backup,
                 :crypto_password,
                 :cloudkit_creator_record_id,
-                :cloudkit_modify_device
+                :cloudkit_modify_device,
+                :folder
 
   ##
   # Creates a new AppleNote. Expects an Integer +z_pk+, an Integer +znote+ representing the ZICNOTEDATA.ZNOTE field, 
@@ -426,6 +429,19 @@ class AppleNote < AppleCloudKitRecord
     return html
   end
 
+  def zettel_date
+    @creation_time.strftime("%Y%m%d%H%M%S")
+  end
+
+  def title
+    return @title unless @title.to_s.end_with? "…"
+    @title.slice(0, @title.length-1).strip
+  end
+
+  def zettel_filename
+     "#{zettel_date} #{title}".gsub(/\s/, "\ ").gsub(/\//, '-')
+  end
+
   def generate_html_text
     html = ""
 
@@ -635,5 +651,242 @@ class AppleNote < AppleCloudKitRecord
     # Return what we've built
     return html
   end
+
+  def generate_markdown
+    meta = <<~META
+      id: #{@note_id}
+      account: #{@account.name}
+      folder:
+        key: #{@folder.primary_key}
+        name: #{@folder.name}
+      title: #{title}
+      created_at: #{@creation_time}
+      last_modified: #{@modify_time}
+      password: #{@crypto_password}
+      created_by: #{@notestore.cloud_kit_participants[@cloudkit_creator_record_id].email}
+      last_modified_by: #{@notestore.cloud_kit_participants[@cloudkit_modifier_record_id].email}
+      last_modified_on: #{@cloudkit_last_modified_device}
+    META
+    
+    content = ""
+    # Handle the text to insert, only if we have plaintext to run
+    if @plaintext
+      content += "#{plaintext}" if @notestore.version == AppleNoteStore::IOS_LEGACY_VERSION
+      content += generate_markdown_text if @notestore.version > AppleNoteStore::IOS_VERSION_9
+    else
+      content += "%%Contents not decrypted%%" if @encrypted_data
+    end
+    return <<~CONTENT
+    ---
+    #{meta}---
+    #{content}
+
+    CONTENT
+  end
+
+  def generate_markdown_text
+    html = ""
+
+    # Bail out if we don't have anything to decode
+    return html if !@decompressed_data
+
+    # Set up variables for the run
+    embedded_object_index = 0
+    current_index = 0
+    current_style = -1
+
+    # Decode the proto
+    begin
+      tmp_note_store_proto = NoteStoreProto.decode(@decompressed_data)
+    rescue Exception
+    end
+
+    # Bail out if we don't have anything to decode
+    return html if !tmp_note_store_proto
+    
+    # Create a copy of the text, which is frozen
+    note_text = tmp_note_store_proto.document.note.note_text.dup
+
+    # Capture if we're in a checkbox, because they're special
+    current_checkbox = nil
+
+    # Iterate over the attribute runs to display stuffs
+    tmp_note_store_proto.document.note.attribute_run.each do |note_part|
+
+      # Check for something embedded, if so, don't put in the characters, replace them with the object
+      if note_part.attachment_info
+
+        if @embedded_objects[embedded_object_index]
+          html += @embedded_objects[embedded_object_index].to_markdown
+        else
+          html += "\n%%Object missing, this is common for deleted notes%%\n"
+        end
+        embedded_object_index += 1
+        current_index += note_part.length
+
+      else # We must have text to parse
+
+        # Deal with styling
+        if note_part.paragraph_style
+
+          # Because similar checkboxe carry over past a line break, 
+          # need to close it when we hit a different type
+          if current_checkbox and note_part.paragraph_style.style_type != STYLE_TYPE_CHECKBOX
+            html += "\n"
+          end
+
+          # Add in indents, this doesn't work so well
+          indents = 0
+          while indents < note_part.paragraph_style.indent_amount do
+            html += "  "
+            indents += 1
+          end
+
+          # Add new style
+          case note_part.paragraph_style.style_type
+          when STYLE_TYPE_TITLE
+            html += "# "
+          when STYLE_TYPE_HEADING
+            html += "## "
+          when STYLE_TYPE_SUBHEADING
+            html += "### "
+          when STYLE_TYPE_MONOSPACED
+            html += "`"
+          when STYLE_TYPE_NUMBERED_LIST
+            html += ""
+          when STYLE_TYPE_DOTTED_LIST
+            html += "* "
+          when STYLE_TYPE_DASHED_LIST
+            html += "- "
+          when STYLE_TYPE_CHECKBOX
+            # Set the style to apply to the list item
+            style = " "
+            style = "x" if note_part.paragraph_style.checklist.done == 1
+
+            html += "\n- [#{style}] "
+
+            # Update our knowledge of the current checkbox
+            current_checkbox = note_part.paragraph_style.checklist.uuid
+          end
+          current_style = note_part.paragraph_style.style_type
+
+        end
+
+        # Add in font stuff
+        case note_part.font_weight
+        when FONT_TYPE_DEFAULT
+          # Do nothing
+        when FONT_TYPE_BOLD 
+          html += "**"
+        when FONT_TYPE_ITALIC
+          html += "_"
+        when FONT_TYPE_BOLD_ITALIC
+          html += "**_"
+        end
+
+        # Add in underlined
+        if note_part.underlined == 1
+          html += "_"
+        end
+
+        # Add in strikethrough
+        if note_part.strikethrough == 1
+          html += "~~"
+        end
+
+        # Add in the slice of text represented by this run
+        slice_to_add = note_text.slice(current_index, note_part.length)
+
+        # Apple seems to be making Emojis and some other characters two characters
+        # this breaks stuff. This is a really hacky solution.
+        double_characters = 0
+        slice_to_add.each_codepoint do |codepoint|
+          double_characters += 1 if codepoint > 65535
+        end
+
+        if double_characters > 0
+          slice_to_add = note_text.slice(current_index, note_part.length - double_characters)
+        end
+        
+        # # Deal with newlines
+        # case current_style
+        # when STYLE_TYPE_DOTTED_LIST
+        #   slice_to_add = slice_to_add.split("\n").map{|e| ""}.join("\n")
+        # when STYLE_TYPE_DASHED_LIST
+        #   slice_to_add = slice_to_add.split("\n").map{|| }.join("\n")
+        # when STYLE_TYPE_NUMBERED_LIST 
+        #   slice_to_add = slice_to_add.split("\n").map{|| }.join("\n")
+        # end
+
+        html += slice_to_add
+
+        # Increment our counter to be sure we don't loop infinitely
+        current_index += (note_part.length - double_characters)
+
+        # Close strikethrough
+        if note_part.strikethrough == 1
+          html += "~~"
+        end
+
+        # Close underlined
+        if note_part.underlined == 1
+          html += "_"
+        end
+
+        # Close font stuff
+        case note_part.font_weight
+        when FONT_TYPE_DEFAULT
+          # Do nothing
+        when FONT_TYPE_BOLD
+          html += "**"
+        when FONT_TYPE_ITALIC
+          html += "_"
+        when FONT_TYPE_BOLD_ITALIC
+          html += "_**"
+        end
+
+        # Close any remaining styles
+        case current_style
+        when STYLE_TYPE_TITLE
+          html += "\n\n"
+        when STYLE_TYPE_HEADING
+          html += "\n"
+        when STYLE_TYPE_SUBHEADING
+          html += "\n"
+        when STYLE_TYPE_MONOSPACED
+          html += "`"
+        when STYLE_TYPE_NUMBERED_LIST
+          html += "\n"
+        when STYLE_TYPE_DOTTED_LIST
+          html += "\n"
+        when STYLE_TYPE_DASHED_LIST
+          html += "\n"
+        end
+
+        if slice_to_add[-1] == "\n"
+          #html += "\n";
+        end
+
+      end
+
+    end
+
+    # html.gsub!('</h1><h1>','')
+    # html.gsub!('</h2><h2>','')
+    # html.gsub!('</h3><h3>','')
+    # html.gsub!('</code><code>','')
+    # html.gsub!('</del><del>','')
+    # html.gsub!('</b><b>','')
+    # html.gsub!('</i><i>','')
+    # html.gsub!('</u><u>','')
+    # html.gsub!(/<h1>\s*<\/h1>/,'') # Remove empty titles
+    # html.gsub!(/\n<\/h1>/,'</h1>') # Remove extra line breaks in front of h1
+    # html.gsub!(/\n<\/h2>/,'</h2>') # Remove extra line breaks in front of h2
+    # html.gsub!(/\n<\/h3>/,'</h3>') # Remove extra line breaks in front of h3
+
+    # Return what we've built
+    return html
+  end
+
 
 end

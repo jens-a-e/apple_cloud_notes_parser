@@ -108,8 +108,8 @@ class AppleNotesEmbeddedPublicJpeg < AppleNotesEmbeddedObject
   # This method returns the +filepath+ of this object. 
   # This is computed based on the assumed default storage location.
   def get_media_filepath
-    return "Accounts/#{@note.account.identifier}/Media/#{get_media_uuid}/#{get_media_uuid}" if @is_password_protected
-    return "Accounts/#{@note.account.identifier}/Media/#{get_media_uuid}/#{@filename}"
+    return "Media/#{get_media_uuid}/#{get_media_uuid}" if @is_password_protected
+    return "Media/#{get_media_uuid}/#{@filename}"
   end
 
   ##
@@ -183,6 +183,10 @@ class AppleNotesEmbeddedPublicJpeg < AppleNotesEmbeddedObject
   def generate_html
     return @thumbnails.first.generate_html if @thumbnails.length > 0
     return "<img src='../#{@reference_location}' />"
+  end
+
+  def to_markdown
+    "![](#{get_media_filepath})\n"
   end
 
 end

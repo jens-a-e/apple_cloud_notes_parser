@@ -49,7 +49,7 @@ class AppleNotesEmbeddedPDF < AppleNotesEmbeddedObject
                         "FROM ZICCLOUDSYNCINGOBJECT " +
                         "WHERE ZICCLOUDSYNCINGOBJECT.Z_PK=?",
                         row["ZMEDIA"]) do |media_row|
-        return "Accounts/#{@note.account.identifier}/Media/#{media_row["ZIDENTIFIER"]}/#{media_row["ZFILENAME"]}"
+        return "Media/#{media_row["ZIDENTIFIER"]}/#{media_row["ZFILENAME"]}"
       end
     end
   end
@@ -78,6 +78,10 @@ class AppleNotesEmbeddedPDF < AppleNotesEmbeddedObject
   def generate_html
     return "<a href='../#{@reference_location}'>PDF #{@filename}</a>" if @reference_location
     return "{PDF Missing due to not having a file reference location}"
+  end
+
+  def to_markdown
+    "[PDF #{@filename}](#{get_media_filepath})\n"
   end
 
 end

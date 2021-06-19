@@ -212,4 +212,8 @@ class AppleNotesEmbeddedObject < AppleCloudKitRecord
     return self.to_s
   end
 
+  def to_markdown
+    "\n%%#{to_s}%%\n"
+  end
+
 end

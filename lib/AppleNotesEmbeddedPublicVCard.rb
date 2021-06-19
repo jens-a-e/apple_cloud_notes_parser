@@ -59,7 +59,7 @@ class AppleNotesEmbeddedPublicVCard < AppleNotesEmbeddedObject
                         "FROM ZICCLOUDSYNCINGOBJECT " +
                         "WHERE ZICCLOUDSYNCINGOBJECT.Z_PK=?",
                         row["ZMEDIA"]) do |media_row|
-        return "Accounts/#{@note.account.identifier}/Media/#{media_row["ZIDENTIFIER"]}/#{media_row["ZFILENAME"]}"
+        return "Media/#{media_row["ZIDENTIFIER"]}/#{media_row["ZFILENAME"]}"
       end
     end
   end
@@ -88,6 +88,10 @@ class AppleNotesEmbeddedPublicVCard < AppleNotesEmbeddedObject
   def generate_html
     return "<a href='../#{@reference_location}'>VCard #{@filename}</a>" if @reference_location
     "{VCard missing due to not having file reference point}"
+  end
+
+  def to_markdown
+    "![VCard #{@filename}](Media/#{@filename})\n"
   end
 
 end
